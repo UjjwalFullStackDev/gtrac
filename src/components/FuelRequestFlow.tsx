@@ -1,11 +1,16 @@
-import { useState, useMemo } from "react";
+// FuelRequestFlow.tsx - Main Component
+import React, { useState, useMemo } from "react";
 import { FuelRequestCard } from "./FuelRequestCard";
 import { FuelDetailsModal } from "./FuelDetailsModal";
 import { useFuelData } from "../hooks/useFuelData";
 import { fuelApiService } from "../services/fuelApiService";
 import type { AlertContext } from "../types/fuelTypes";
 
-export default function FuelRequestFlow() {
+interface FuelRequestFlowProps {
+  alertId: number; // Pass alertId as prop from parent component
+}
+
+export default function FuelRequestFlow({ alertId }: FuelRequestFlowProps) {
   const [showRequest, setShowRequest] = useState(true);
   const [loadingAccept, setLoadingAccept] = useState(false);
   const [context, setContext] = useState<AlertContext | null>(null);
@@ -25,11 +30,18 @@ export default function FuelRequestFlow() {
   const handleAccept = async () => {
     try {
       setLoadingAccept(true);
-      const mergedData = await fuelApiService.getMergedFuelData();
-      setContext(mergedData);
+      // Get context data first
+      const contextData = await fuelApiService.acceptAlert(alertId);
+      setContext(contextData);
+      
+      // Get merged fuel data
+      const mergedData = await fuelApiService.getMergedFuelData(alertId);
+      
       setShowRequest(false);
       setShowModal(true);
-      await refreshData(mergedData);
+      
+      // Refresh data with context
+      await refreshData(contextData, alertId);
     } catch (error: any) {
       alert(error?.message || "Accept failed");
     } finally {
@@ -45,6 +57,7 @@ export default function FuelRequestFlow() {
     if (!context) return;
     
     const body = {
+      alertId: context.alertId,
       ambulanceId: context.ambulanceId,
       sysServiceId: context.sysServiceId,
       ambulanceNumber: context.ambulanceNumber,
@@ -76,6 +89,7 @@ export default function FuelRequestFlow() {
           onAccept={handleAccept}
           onReject={() => setShowRequest(false)}
           loading={loadingAccept}
+          alertId={alertId}
         />
       )}
 
@@ -90,7 +104,7 @@ export default function FuelRequestFlow() {
           diffPct={diffPct}
           status={status}
           onClose={() => setShowModal(false)}
-          onRefresh={refreshData}
+          onRefresh={() => refreshData(context, alertId)}
           onSubmit={handleSubmit}
         />
       )}

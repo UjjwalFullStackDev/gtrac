@@ -1,25 +1,33 @@
+// services/fuelApiService.ts
 import axios from 'axios';
 import type { FuelLog, GpsFuel, AlertContext, MergedFuelData } from '../types/fuelTypes';
 
 const ENDPOINTS = {
-  ACCEPT_ALERT: "http://localhost:5001/api/v1/ambulance/fuel/record",
-  FUEL_LOGS: (ambulanceId: number) =>
-    `http://localhost:5001/api/v1/ambulance/fuel/logs?ambulanceId=${ambulanceId}`,
+  ACCEPT_ALERT: (alertId: number) =>
+    `http://localhost:5001/api/v1/ambulance/fuel/alert/${alertId}`,
+  FUEL_LOGS: (alertId: number) =>
+    `http://localhost:5001/api/v1/ambulance/fuel/record/alert/${alertId}`,
   GPS_POINTS: (sysServiceId: string | number) =>
     `http://localhost:5001/api/v1/gps/fuel?sys_service_id=${sysServiceId}`,
-  SUBMIT_DECISION: "http://localhost:5001/api/v1/ambulance/fuel/record/confirm",
+  SUBMIT_DECISION: "http://localhost:5001/api/v1/ambulance/fuel/record/dashboard/confirm",
 };
 
 class FuelApiService {
-  async acceptAlert(): Promise<AlertContext> {
-    const res = await fetch(ENDPOINTS.ACCEPT_ALERT);
-    if (!res.ok) throw new Error("Accept alert failed");
-    const data = await res.json();
-    return this.mapAlertToContext(data);
+  async acceptAlert(alertId: number): Promise<AlertContext> {
+    const res = await axios.get(ENDPOINTS.ACCEPT_ALERT(alertId));
+    if (res.status !== 200) throw new Error("Accept alert failed");
+
+    const alert = res.data.data?.[0]; // backend returns array
+    return {
+      alertId: alertId, // store alertId for later use
+      ambulanceId: alert?.id, // careful: this is alert.id, not ambulanceId!
+      sysServiceId: alert?.sys_service_id,
+      ambulanceNumber: alert?.vehicleno,
+    };
   }
 
-  async getFuelLogs(ambulanceId?: number): Promise<FuelLog[]> {
-    const res = await axios.get("http://localhost:5001/api/v1/ambulance/fuel/record/");
+  async getFuelLogs(alertId: number): Promise<FuelLog[]> {
+    const res = await axios.get(ENDPOINTS.FUEL_LOGS(alertId));
     return res.data.ambulanceFuelLog;
   }
 
@@ -32,24 +40,26 @@ class FuelApiService {
     const startdate = `${yyyy}-${mm}-${dd} 00:00`;
     const enddate = `${yyyy}-${mm}-${dd} 23:59`;
 
-    // Using hardcoded URL as per original code
-    const url = "https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=12449316&startdate=2025-09-02%2000%3A00&enddate=2025-09-02%2023%3A59&TypeFT=1&userid=833193";
+    const url = `https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=${sysServiceId}&startdate=${encodeURIComponent(
+      startdate
+    )}&enddate=${encodeURIComponent(enddate)}&TypeFT=1&userid=833193`;
 
     const res = await axios.get(url);
     return res.data.list;
   }
 
-  async getMergedFuelData(): Promise<MergedFuelData> {
-    const fuelLogs = await this.getFuelLogs();
+  async getMergedFuelData(alertId: number): Promise<MergedFuelData> {
+    const fuelLogs = await this.getFuelLogs(alertId);
     const log = fuelLogs[0]; // pick first record
 
     const { sysServiceId, ambulanceNumber } = log.ambulance;
     const gpsData = await this.getGpsFuelPoints(sysServiceId);
 
     const latestGps = gpsData[gpsData.length - 1];
-    const difference = ((log.softwareReadingLitres - latestGps.filling) / log.softwareReadingLitres) * 100;
+    const difference = ((Number(log.softwareReadingLitres) - latestGps.filling) / Number(log.softwareReadingLitres)) * 100;
 
     return {
+      alertId: alertId,
       ambulanceId: log.ambulanceId,
       sysServiceId,
       ambulanceNumber,
@@ -64,22 +74,14 @@ class FuelApiService {
   }
 
   async submitFuelDecision(body: any): Promise<any> {
-    const res = await fetch(ENDPOINTS.SUBMIT_DECISION, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error("Submit failed");
-    return res.json();
-  }
-
-  private mapAlertToContext(data: any): AlertContext {
-    const a = data?.data || data?.alert || data || {};
-    return {
-      ambulanceId: a.ambulanceId ?? 101,
-      sysServiceId: a.sysServiceId ?? "12449316",
-      ambulanceNumber: a.ambulanceNumber ?? "ITG1100",
-    };
+    try {
+      const res = await axios.post(ENDPOINTS.SUBMIT_DECISION, body, {
+        headers: { "Content-Type": "application/json" },
+      });
+      return res.data;
+    } catch (error) {
+      throw new Error("Submit failed: " + (error as Error).message);
+    }
   }
 }
 

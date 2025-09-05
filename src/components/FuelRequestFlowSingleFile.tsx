@@ -105,8 +105,8 @@ async function getGpsFuelPoints(sys_service_id: string) {
   const startdate = `${yyyy}-${mm}-${dd} 00:00`;
   const enddate = `${yyyy}-${mm}-${dd} 23:59`;
 
-  // const url = `https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=${sys_service_id}&startdate=${encodeURIComponent(startdate)}&enddate=${encodeURIComponent(enddate)}&TypeFT=1&userid=833193`;
-  const url = "https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=12449316&startdate=2025-09-02%2000%3A00&enddate=2025-09-02%2023%3A59&TypeFT=1&userid=833193";
+  const url = `https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=${sys_service_id}&startdate=${encodeURIComponent(startdate)}&enddate=${encodeURIComponent(enddate)}&TypeFT=1&userid=833193`;
+  // const url = "https://gtrac.in:8089/trackingDashboard/getAllfueldatagraph?sys_service_id=12449316&startdate=2025-09-02%2000%3A00&enddate=2025-09-02%2023%3A59&TypeFT=1&userid=833193";
 
   const res = await axios.get(url);
   console.log(res.data)

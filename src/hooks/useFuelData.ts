@@ -31,13 +31,13 @@ export function useFuelData(context: AlertContext | null) {
     [diffPct]
   );
 
-  const refreshData = async (ctx = context) => {
-    if (!ctx) return;
+  const refreshData = async (ctx = context, alertId?: number) => {
+    if (!ctx || !alertId) return;
     
     setLoadingData(true);
     try {
       const [fuelLogs, gpsPoints] = await Promise.all([
-        fuelApiService.getFuelLogs(ctx.ambulanceId),
+        fuelApiService.getFuelLogs(alertId),
         fuelApiService.getGpsFuelPoints(String(ctx.sysServiceId)),
       ]);
       setLogs(fuelLogs ?? []);
