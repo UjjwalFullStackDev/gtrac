@@ -5,10 +5,8 @@ import type { FuelLog, GpsFuel, AlertContext, MergedFuelData } from '../types/fu
 const ENDPOINTS = {
   ACCEPT_ALERT: (alertId: number) =>
     `http://localhost:5001/api/v1/ambulance/fuel/alert/${alertId}`,
-  FUEL_LOGS: (alertId: number) =>
-    `http://localhost:5001/api/v1/ambulance/fuel/record/alert/${alertId}`,
-  GPS_POINTS: (sysServiceId: string | number) =>
-    `http://localhost:5001/api/v1/gps/fuel?sys_service_id=${sysServiceId}`,
+  FUEL_LOGS: () =>
+    "http://localhost:5001/api/v1/ambulance/fuel/record/",
   SUBMIT_DECISION: "http://localhost:5001/api/v1/ambulance/fuel/record/dashboard/confirm",
 };
 
@@ -20,14 +18,15 @@ class FuelApiService {
     const alert = res.data.data?.[0]; // backend returns array
     return {
       alertId: alertId, // store alertId for later use
-      ambulanceId: alert?.id, // careful: this is alert.id, not ambulanceId!
+      ambulanceId: alert?.id, // this is the alert ID from your response
       sysServiceId: alert?.sys_service_id,
       ambulanceNumber: alert?.vehicleno,
     };
   }
 
-  async getFuelLogs(alertId: number): Promise<FuelLog[]> {
-    const res = await axios.get(ENDPOINTS.FUEL_LOGS(alertId));
+  async getFuelLogs(): Promise<FuelLog[]> {
+    // Remove alertId parameter since your endpoint doesn't use it
+    const res = await axios.get(ENDPOINTS.FUEL_LOGS());
     return res.data.ambulanceFuelLog;
   }
 
@@ -49,26 +48,45 @@ class FuelApiService {
   }
 
   async getMergedFuelData(alertId: number): Promise<MergedFuelData> {
-    const fuelLogs = await this.getFuelLogs(alertId);
-    const log = fuelLogs[0]; // pick first record
+    // Get alert context first to get sys_service_id and vehicle info
+    const alertContext = await this.acceptAlert(alertId);
+    
+    // Get fuel logs (all logs, then filter if needed)
+    const fuelLogs = await this.getFuelLogs();
+    
+    // Filter fuel logs for this specific vehicle/ambulance if needed
+    // Since we only have vehicleno from alert, we'll take the first log for now
+    // You might need to filter by ambulanceNumber if multiple vehicles
+    const relevantLog = fuelLogs.find(log => 
+      log.ambulance?.ambulanceNumber === alertContext.ambulanceNumber
+    ) || fuelLogs[0];
 
-    const { sysServiceId, ambulanceNumber } = log.ambulance;
-    const gpsData = await this.getGpsFuelPoints(sysServiceId);
+    if (!relevantLog) {
+      throw new Error("No fuel logs found for this vehicle");
+    }
+
+    // Get GPS data using sys_service_id from alert
+    const gpsData = await this.getGpsFuelPoints(String(alertContext.sysServiceId));
 
     const latestGps = gpsData[gpsData.length - 1];
-    const difference = ((Number(log.softwareReadingLitres) - latestGps.filling) / Number(log.softwareReadingLitres)) * 100;
+    const softwareReading = Number(relevantLog.softwareReadingLitres);
+    const gpsReading = latestGps?.filling || 0;
+    
+    const difference = softwareReading > 0 
+      ? ((softwareReading - gpsReading) / softwareReading) * 100 
+      : 0;
 
     return {
       alertId: alertId,
-      ambulanceId: log.ambulanceId,
-      sysServiceId,
-      ambulanceNumber,
-      location: log.location,
-      softwareReading: Number(log.softwareReadingLitres),
-      gpsFilling: latestGps?.filling || 0,
+      ambulanceId: alertContext.ambulanceId, // This is actually alert.id
+      sysServiceId: alertContext.sysServiceId,
+      ambulanceNumber: alertContext.ambulanceNumber,
+      location: relevantLog.location,
+      softwareReading: softwareReading,
+      gpsFilling: gpsReading,
       difference: difference.toFixed(2) + "%",
-      amount: log.softwareReadingTotalAmount || "0",
-      invoiceUrl: log.invoiceFileUrl,
+      amount: relevantLog.softwareReadingTotalAmount || "0",
+      invoiceUrl: relevantLog.invoiceFileUrl,
       status: Math.abs(difference) > 5 ? "Audit" : "OK",
     };
   }
