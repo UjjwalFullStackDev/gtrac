@@ -5,8 +5,8 @@ import type { FuelLog, GpsFuel, AlertContext, MergedFuelData } from '../types/fu
 const ENDPOINTS = {
   ACCEPT_ALERT: (alertId: number) =>
     `http://localhost:5001/api/v1/ambulance/fuel/alert/${alertId}`,
-  FUEL_LOGS: () =>
-    "http://localhost:5001/api/v1/ambulance/fuel/record/",
+  FUEL_LOGS: (alertId: number) =>
+    `http://localhost:5001/api/v1/ambulance/fuel/record/${alertId}`,
   SUBMIT_DECISION: "http://localhost:5001/api/v1/ambulance/fuel/record/dashboard/confirm",
 };
 
@@ -25,7 +25,6 @@ class FuelApiService {
   }
 
   async getFuelLogs(): Promise<FuelLog[]> {
-    // Remove alertId parameter since your endpoint doesn't use it
     const res = await axios.get(ENDPOINTS.FUEL_LOGS());
     return res.data.ambulanceFuelLog;
   }
